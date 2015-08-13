@@ -5,33 +5,26 @@ import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
-import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.drawable.Drawable;
-import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
-import android.view.animation.LinearInterpolator;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
 
 /**
  * TODO: document your custom view class.
  */
 public class CircleView extends View implements Animator.AnimatorListener{
     private static final int DEFAULT_PROGRESS_WIDTH = 15;
-    private static final int DEFAULT_ANIM_DURATION = 1200;
-    private static final int[] DEFAULT_COLORS = new int[]{Color.RED, Color.GREEN, Color.BLUE};
-    private Paint mProgressPaint;
-    private RectF mProgressRect;
-    private float mProgressStrokeWidth, mStartAngle = 0, mSweepAngle = 0, mActualCoveredAngle = 0;
-    private ObjectAnimator mAnimator;
-    private int[] mProgressSwapColors;
-    private int mColorArrayPointer = 0;
-    private long mProgressCycleDuration;
-    private float mSize;
+    private Paint mProgressPaintFirst, mProgressPaintSecond;
+    private RectF mFirstRect, mSecondRect;
+    private float mProgressStrokeWidth;
+    private AnimatorSet mAnimator;
+    private float mSizeFirst, mSizeSecond;
 
     public CircleView(Context context) {
         super(context);
@@ -51,16 +44,23 @@ public class CircleView extends View implements Animator.AnimatorListener{
     private void init(AttributeSet attrs, int defStyle) {
         mProgressStrokeWidth = DEFAULT_PROGRESS_WIDTH
                 * getResources().getDisplayMetrics().density;
-        mProgressSwapColors = DEFAULT_COLORS;
-        mProgressCycleDuration = DEFAULT_ANIM_DURATION;
 
-        mProgressPaint = new Paint();
-        mProgressPaint.setFlags(Paint.ANTI_ALIAS_FLAG);
-        mProgressPaint.setStrokeWidth(mProgressStrokeWidth);
-        mProgressPaint.setStyle(Paint.Style.STROKE);
-        mProgressPaint.setColor(Color.RED);
+        mProgressPaintFirst = new Paint();
+        mProgressPaintFirst.setFlags(Paint.ANTI_ALIAS_FLAG);
+        mProgressPaintFirst.setStrokeWidth(mProgressStrokeWidth);
+        mProgressPaintFirst.setStrokeCap(Paint.Cap.ROUND);
+        mProgressPaintFirst.setStyle(Paint.Style.STROKE);
+        mProgressPaintFirst.setColor(Color.RED);
 
-        mProgressRect = new RectF();
+        mProgressPaintSecond = new Paint();
+        mProgressPaintSecond.setFlags(Paint.ANTI_ALIAS_FLAG);
+        mProgressPaintSecond.setStrokeWidth(mProgressStrokeWidth);
+        mProgressPaintSecond.setStrokeCap(Paint.Cap.ROUND);
+        mProgressPaintSecond.setStyle(Paint.Style.STROKE);
+        mProgressPaintSecond.setColor(Color.GREEN);
+
+        mFirstRect = new RectF();
+        mSecondRect = new RectF();
     }
 
     @Override
@@ -74,10 +74,12 @@ public class CircleView extends View implements Animator.AnimatorListener{
 
         int actualHeight = h - paddingTop - paddingBottom;
         int actualWidth = w - paddingLeft - paddingRight;
-        mSize = Math.min(actualHeight, actualWidth);
-        mSize -= mProgressStrokeWidth;
+        mSizeFirst = Math.min(actualHeight, actualWidth);
+        mSizeFirst -= mProgressStrokeWidth;
+        mSizeSecond = mSizeFirst - mProgressStrokeWidth;
 
-        mProgressRect.set(mProgressStrokeWidth, mProgressStrokeWidth, mSize, mSize);
+        mFirstRect.set(mProgressStrokeWidth, mProgressStrokeWidth, mSizeFirst, mSizeFirst);
+        mSecondRect.set(mProgressStrokeWidth * 2, mProgressStrokeWidth * 2, mSizeSecond, mSizeSecond);
     }
 
     @Override
@@ -85,68 +87,39 @@ public class CircleView extends View implements Animator.AnimatorListener{
         super.onDraw(canvas);
 
         if (mAnimator == null) {
-            mAnimator = ObjectAnimator.ofFloat(this, "rectSize", 0, (mSize/2)-(mProgressStrokeWidth/2));
-            mAnimator.setRepeatCount(ValueAnimator.INFINITE);
-            mAnimator.setRepeatMode(ValueAnimator.REVERSE);
-            mAnimator.setDuration(10000);
+            ObjectAnimator firstCircleAnim = ObjectAnimator.ofFloat(this, "rectSizeFirst", 0, (mSizeFirst /2)-(2 * mProgressStrokeWidth/3), 0);
+            firstCircleAnim.setInterpolator(new AccelerateDecelerateInterpolator());
+            firstCircleAnim.setDuration(300);
+
+            ObjectAnimator secondCircleStart = ObjectAnimator.ofFloat(this, "rectSizeSecond", 0, (mSizeSecond /2)-(mProgressStrokeWidth * 3/2));
+            secondCircleStart.setInterpolator(new AccelerateInterpolator());
+            secondCircleStart.setDuration(300);
+
+            ObjectAnimator secondCircleEnd = ObjectAnimator.ofFloat(this, "rectSizeSecond", (mSizeSecond /2)-(mProgressStrokeWidth * 3/2), 0);
+            secondCircleEnd.setInterpolator(new DecelerateInterpolator());
+            secondCircleEnd.setDuration(300);
+
+            mAnimator = new AnimatorSet();
+            mAnimator.play(firstCircleAnim).with(secondCircleEnd).after(secondCircleStart);
+            mAnimator.addListener(this);
+            mAnimator.setStartDelay(200);
             mAnimator.start();
         }
-        if (mProgressRect.left == mProgressRect.right) {
-            canvas.drawLine(mProgressRect.left, 0, mProgressRect.left, mSize, mProgressPaint);
-        } else {
-            canvas.drawArc(mProgressRect, 0, 360, false, mProgressPaint);
-        }
+        canvas.drawArc(mFirstRect, 90, 180, false, mProgressPaintFirst);
+        canvas.drawArc(mSecondRect, 0, 360, false, mProgressPaintSecond);
+        canvas.drawArc(mFirstRect, 270, 180, false, mProgressPaintFirst);
 
 
-    }
-
-    /**
-     * This function is used to create the animation for the progressbar.
-     * It represents the sweep angle of the arc at a particular time.
-     *
-     * @param baseValue The example color attribute value to use.
-     */
-    public void setSweepAngle(float baseValue) {
-        mSweepAngle = baseValue;
-        invalidate();
-    }
-
-
-    public void setRectSize(float baseValue) {
-        mProgressRect.set(mProgressStrokeWidth + baseValue, mProgressStrokeWidth, mSize - baseValue, mSize);
-        invalidate();
-    }
-
-    /**
-     * This function is used to create the animation for the progressbar.
-     * It represents the start angle of the arc at a particular time.
-     *
-     * @param baseValue The example color attribute value to use.
-     */
-    public void setStartAngle(float baseValue) {
-        mStartAngle = mActualCoveredAngle + baseValue;
-        if (mStartAngle > 360) {
-            mStartAngle %= 360;
-        }
 
     }
 
-    /**
-     * Gets the colors attribute value of the progressbar.
-     *
-     * @return The progressbar colors attribute value.
-     */
-    public int[] getProgressSwapColors() {
-        return mProgressSwapColors;
+
+    public void setRectSizeFirst(float baseValue) {
+        mFirstRect.set(mProgressStrokeWidth + baseValue, mProgressStrokeWidth, mSizeFirst - baseValue, mSizeFirst);
     }
 
-    /**
-     * Sets the progressbar's colors attribute value.
-     *
-     * @param progressSwapColors The progressbar colors attribute value to use.
-     */
-    public void setProgressSwapColors(int[] progressSwapColors) {
-        mProgressSwapColors = progressSwapColors;
+    public void setRectSizeSecond(float baseValue) {
+        mSecondRect.set(mProgressStrokeWidth * 2 + baseValue, mProgressStrokeWidth * 2, mSizeSecond - baseValue, mSizeSecond);
         invalidate();
     }
 
@@ -176,14 +149,8 @@ public class CircleView extends View implements Animator.AnimatorListener{
 
     @Override
     public void onAnimationEnd(Animator animation) {
-        mActualCoveredAngle = mStartAngle;
-        if (animation.equals(mAnimator)) {
-            mColorArrayPointer++;
-            if (mColorArrayPointer == mProgressSwapColors.length) {
-                mColorArrayPointer = 0;
-            }
-            mAnimator.start();
-        }
+        mAnimator.setStartDelay(200);
+        mAnimator.start();
     }
 
     @Override
